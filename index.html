@@ -36,10 +36,11 @@ let gameOver = false;
 let touchX = null;
 let touchY = null;
 let bullets = [];
+let enemyBullets = [];
 let enemies = [];
 let buildings = [];
-let frameCount = 0;
 let effects = [];
+let frameCount = 0;
 
 const player = {
   x: canvas.width / 2,
@@ -97,7 +98,6 @@ function enemyHitsBuildingRect(nx, ny, size) {
 
 function randomEdgePosition() {
   const side = Math.floor(Math.random() * 4);
-
   if (side === 0) return { x: Math.random() * canvas.width, y: -30 };
   if (side === 1) return { x: canvas.width + 30, y: Math.random() * canvas.height };
   if (side === 2) return { x: Math.random() * canvas.width, y: canvas.height + 30 };
@@ -156,6 +156,7 @@ function spawnEnemy() {
     moveTimer: 0,
     dirX: 0,
     dirY: 0,
+    shootCooldown: 30 + Math.floor(Math.random() * 40),
     color: type === "chase" ? "#ff3b3b" : type === "run" ? "#ffae00" : "#b000ff"
   });
 }
@@ -185,6 +186,25 @@ function shootAuto() {
   });
 
   addEffect(player.x + player.size / 2, player.y + player.size / 2, "#88eeff", 14, 8);
+}
+
+function enemyShoot(e) {
+  const px = player.x + player.size / 2;
+  const py = player.y + player.size / 2;
+  const ex = e.x + e.size / 2;
+  const ey = e.y + e.size / 2;
+
+  const dir = normalize(px - ex, py - ey);
+
+  enemyBullets.push({
+    x: ex - 3,
+    y: ey - 3,
+    dx: dir.x * 3.2,
+    dy: dir.y * 3.2,
+    size: 6
+  });
+
+  addEffect(ex, ey, "#ffd966", 10, 6);
 }
 
 function triggerCrush() {
@@ -220,6 +240,7 @@ function resetGame() {
   touchX = null;
   touchY = null;
   bullets = [];
+  enemyBullets = [];
   enemies = [];
   buildings = [];
   effects = [];
@@ -315,6 +336,41 @@ function updateBullets() {
   }
 }
 
+function updateEnemyBullets() {
+  for (let i = enemyBullets.length - 1; i >= 0; i--) {
+    const b = enemyBullets[i];
+    b.x += b.dx;
+    b.y += b.dy;
+
+    if (bulletHitsBuilding(b)) {
+      enemyBullets.splice(i, 1);
+      continue;
+    }
+
+    if (rectHit(b.x, b.y, b.size, b.size, player.x, player.y, player.size, player.size)) {
+      if (player.invincible <= 0) {
+        player.hp--;
+        player.invincible = 60;
+        addEffect(player.x + player.size / 2, player.y + player.size / 2, "#fff5aa", 16, 10);
+
+        if (player.hp <= 0) {
+          player.hp = 0;
+          gameOver = true;
+        }
+      }
+      enemyBullets.splice(i, 1);
+      continue;
+    }
+
+    if (
+      b.x < -20 || b.x > canvas.width + 20 ||
+      b.y < -20 || b.y > canvas.height + 20
+    ) {
+      enemyBullets.splice(i, 1);
+    }
+  }
+}
+
 function updateEnemies() {
   for (let i = enemies.length - 1; i >= 0; i--) {
     const e = enemies[i];
@@ -384,6 +440,20 @@ function updateEnemies() {
     if (!enemyHitsBuildingRect(nx, e.y, e.size)) e.x = nx;
     if (!enemyHitsBuildingRect(e.x, ny, e.size)) e.y = ny;
 
+    e.shootCooldown--;
+    if (e.shootCooldown <= 0) {
+      const canShoot =
+        (e.type === "chase" && dist < 260) ||
+        (e.type === "run" && dist < 180) ||
+        (e.type === "hide" && dist < 300);
+
+      if (canShoot) {
+        enemyShoot(e);
+      }
+
+      e.shootCooldown = e.type === "chase" ? 70 : e.type === "run" ? 110 : 80;
+    }
+
     if (rectHit(e.x, e.y, e.size, e.size, player.x, player.y, player.size, player.size)) {
       if (player.invincible <= 0) {
         player.hp--;
@@ -428,6 +498,7 @@ function update() {
     frameCount++;
     updatePlayer();
     updateBullets();
+    updateEnemyBullets();
     updateEnemies();
     updateEffects();
 
@@ -516,6 +587,16 @@ function drawBullets() {
   }
 }
 
+function drawEnemyBullets() {
+  for (const b of enemyBullets) {
+    ctx.fillStyle = "#ffd84d";
+    ctx.fillRect(b.x, b.y, b.size, b.size);
+
+    ctx.fillStyle = "rgba(255,216,77,0.25)";
+    ctx.fillRect(b.x - 2, b.y - 2, b.size + 4, b.size + 4);
+  }
+}
+
 function drawEnemyBody(e) {
   ctx.fillStyle = e.color;
   ctx.fillRect(e.x + 3, e.y, e.size - 6, e.size);
@@ -553,8 +634,8 @@ function drawEffects() {
     const alpha = ef.life / ef.maxLife;
     ctx.beginPath();
     ctx.arc(ef.x, ef.y, ef.size * (1 + (1 - alpha) * 0.4), 0, Math.PI * 2);
-    ctx.fillStyle = ef.color.replace("0.65", alpha.toFixed(2));
     ctx.globalAlpha = alpha;
+    ctx.fillStyle = ef.color;
     ctx.fill();
     ctx.globalAlpha = 1;
   }
@@ -590,6 +671,7 @@ function draw() {
   drawBuildings();
   drawPlayer();
   drawBullets();
+  drawEnemyBullets();
   drawEnemies();
   drawEffects();
   drawUI();
