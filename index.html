@@ -5,96 +5,291 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>ロボットシューティング</title>
 <style>
-body { margin: 0; overflow: hidden; background: black; }
-canvas { display: block; }
+body {
+  margin: 0;
+  overflow: hidden;
+  background: black;
+}
+canvas {
+  display: block;
+}
 </style>
 </head>
 <body>
-
 <canvas id="game"></canvas>
 
 <script>
 const canvas = document.getElementById("game");
 const ctx = canvas.getContext("2d");
 
-canvas.width = window.innerWidth;
-canvas.height = window.innerHeight;
+function resizeCanvas() {
+  canvas.width = window.innerWidth;
+  canvas.height = window.innerHeight;
+}
+resizeCanvas();
+window.addEventListener("resize", resizeCanvas);
 
-let player = {
-  x: canvas.width/2,
-  y: canvas.height/2,
-  size: 20,
-  speed: 5
+const player = {
+  x: canvas.width / 2,
+  y: canvas.height / 2,
+  size: 24,
+  speed: 5,
+  hp: 5
 };
 
-let bullets = [];
-let enemies = [];
+const bullets = [];
+const enemies = [];
+let score = 0;
+let gameOver = false;
 
 document.addEventListener("touchmove", e => {
-  player.x = e.touches[0].clientX;
-  player.y = e.touches[0].clientY;
+  if (gameOver) return;
+  player.x = e.touches[0].clientX - player.size / 2;
+  player.y = e.touches[0].clientY - player.size / 2;
 });
 
-document.addEventListener("touchstart", shoot);
+document.addEventListener("touchstart", () => {
+  if (gameOver) return;
+  shoot();
+});
+
+function clampPlayer() {
+  player.x = Math.max(0, Math.min(canvas.width - player.size, player.x));
+  player.y = Math.max(0, Math.min(canvas.height - player.size, player.y));
+}
 
 function shoot() {
-  bullets.push({ x: player.x, y: player.y, dx: 0, dy: -8 });
+  bullets.push({
+    x: player.x + player.size / 2 - 3,
+    y: player.y + player.size / 2 - 8,
+    width: 6,
+    height: 12,
+    dx: 0,
+    dy: -8
+  });
+}
+
+function randomEdgePosition() {
+  const side = Math.floor(Math.random() * 4);
+
+  if (side === 0) {
+    return { x: Math.random() * canvas.width, y: -30 };
+  }
+  if (side === 1) {
+    return { x: canvas.width + 30, y: Math.random() * canvas.height };
+  }
+  if (side === 2) {
+    return { x: Math.random() * canvas.width, y: canvas.height + 30 };
+  }
+  return { x: -30, y: Math.random() * canvas.height };
 }
 
 function spawnEnemy() {
+  if (gameOver) return;
+
+  const pos = randomEdgePosition();
+  const types = ["chase", "run", "hide"];
+  const type = types[Math.floor(Math.random() * types.length)];
+
   enemies.push({
-    x: Math.random()*canvas.width,
-    y: -20,
-    size: 15,
-    speed: 2
+    x: pos.x,
+    y: pos.y,
+    size: 22,
+    type: type,
+    speed: type === "chase" ? 1.8 : type === "run" ? 2.2 : 1.4,
+    hp: type === "chase" ? 2 : 1,
+    moveTimer: 0,
+    dirX: 0,
+    dirY: 0,
+    color: type === "chase" ? "red" : type === "run" ? "orange" : "purple"
   });
 }
 
-setInterval(spawnEnemy, 1000);
+setInterval(spawnEnemy, 900);
 
-function update() {
-  ctx.clearRect(0,0,canvas.width,canvas.height);
+function distance(ax, ay, bx, by) {
+  const dx = bx - ax;
+  const dy = by - ay;
+  return Math.hypot(dx, dy);
+}
 
-  // プレイヤー
+function normalize(dx, dy) {
+  const len = Math.hypot(dx, dy) || 1;
+  return { x: dx / len, y: dy / len };
+}
+
+function updateBullets() {
+  for (let i = bullets.length - 1; i >= 0; i--) {
+    const b = bullets[i];
+    b.x += b.dx;
+    b.y += b.dy;
+
+    if (b.y + b.height < 0) {
+      bullets.splice(i, 1);
+    }
+  }
+}
+
+function updateEnemies() {
+  for (let i = enemies.length - 1; i >= 0; i--) {
+    const e = enemies[i];
+
+    const px = player.x + player.size / 2;
+    const py = player.y + player.size / 2;
+    const ex = e.x + e.size / 2;
+    const ey = e.y + e.size / 2;
+
+    const dist = distance(ex, ey, px, py);
+
+    if (e.type === "chase") {
+      const dir = normalize(px - ex, py - ey);
+      e.x += dir.x * e.speed;
+      e.y += dir.y * e.speed;
+    }
+
+    else if (e.type === "run") {
+      if (dist < 220) {
+        const dir = normalize(ex - px, ey - py);
+        e.x += dir.x * e.speed;
+        e.y += dir.y * e.speed;
+      } else {
+        e.moveTimer--;
+        if (e.moveTimer <= 0) {
+          e.moveTimer = 30 + Math.floor(Math.random() * 50);
+          const angle = Math.random() * Math.PI * 2;
+          e.dirX = Math.cos(angle);
+          e.dirY = Math.sin(angle);
+        }
+        e.x += e.dirX * 1.2;
+        e.y += e.dirY * 1.2;
+      }
+    }
+
+    else if (e.type === "hide") {
+      if (dist > 180) {
+        const dir = normalize(px - ex, py - ey);
+        e.x += dir.x * e.speed * 0.6;
+        e.y += dir.y * e.speed * 0.6;
+      } else if (dist < 100) {
+        const dir = normalize(ex - px, ey - py);
+        e.x += dir.x * e.speed * 0.9;
+        e.y += dir.y * e.speed * 0.9;
+      } else {
+        e.moveTimer--;
+        if (e.moveTimer <= 0) {
+          e.moveTimer = 20 + Math.floor(Math.random() * 40);
+          const angle = Math.random() * Math.PI * 2;
+          e.dirX = Math.cos(angle);
+          e.dirY = Math.sin(angle);
+        }
+        e.x += e.dirX * 1.0;
+        e.y += e.dirY * 1.0;
+      }
+    }
+
+    e.x = Math.max(-40, Math.min(canvas.width + 40, e.x));
+    e.y = Math.max(-40, Math.min(canvas.height + 40, e.y));
+
+    if (
+      e.x < player.x + player.size &&
+      e.x + e.size > player.x &&
+      e.y < player.y + player.size &&
+      e.y + e.size > player.y
+    ) {
+      enemies.splice(i, 1);
+      player.hp -= 1;
+      if (player.hp <= 0) {
+        gameOver = true;
+      }
+      continue;
+    }
+
+    for (let j = bullets.length - 1; j >= 0; j--) {
+      const b = bullets[j];
+      if (
+        b.x < e.x + e.size &&
+        b.x + b.width > e.x &&
+        b.y < e.y + e.size &&
+        b.y + b.height > e.y
+      ) {
+        e.hp -= 1;
+        bullets.splice(j, 1);
+
+        if (e.hp <= 0) {
+          enemies.splice(i, 1);
+          score += 10;
+        }
+        break;
+      }
+    }
+  }
+}
+
+function drawPlayer() {
   ctx.fillStyle = "cyan";
   ctx.fillRect(player.x, player.y, player.size, player.size);
-
-  // 弾
-  bullets.forEach((b,i) => {
-    b.y += b.dy;
-    ctx.fillStyle = "yellow";
-    ctx.fillRect(b.x, b.y, 5, 10);
-
-    if(b.y < 0) bullets.splice(i,1);
-  });
-
-  // 敵
-  enemies.forEach((e,i) => {
-    e.y += e.speed;
-    ctx.fillStyle = "red";
-    ctx.fillRect(e.x, e.y, e.size, e.size);
-
-    // 当たり判定
-    bullets.forEach((b,j) => {
-      if(
-        b.x < e.x+e.size &&
-        b.x > e.x &&
-        b.y < e.y+e.size &&
-        b.y > e.y
-      ){
-        enemies.splice(i,1);
-        bullets.splice(j,1);
-      }
-    });
-
-    if(e.y > canvas.height) enemies.splice(i,1);
-  });
-
-  requestAnimationFrame(update);
 }
 
-update();
-</script>
+function drawBullets() {
+  ctx.fillStyle = "yellow";
+  bullets.forEach(b => {
+    ctx.fillRect(b.x, b.y, b.width, b.height);
+  });
+}
 
+function drawEnemies() {
+  enemies.forEach(e => {
+    ctx.fillStyle = e.color;
+    ctx.fillRect(e.x, e.y, e.size, e.size);
+  });
+}
+
+function drawUI() {
+  ctx.fillStyle = "white";
+  ctx.font = "20px sans-serif";
+  ctx.fillText("SCORE: " + score, 20, 35);
+  ctx.fillText("HP: " + player.hp, 20, 65);
+
+  ctx.font = "14px sans-serif";
+  ctx.fillStyle = "#cccccc";
+  ctx.fillText("赤=迫る  橙=逃げる  紫=隠れる", 20, 90);
+
+  if (gameOver) {
+    ctx.fillStyle = "rgba(0,0,0,0.6)";
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+    ctx.fillStyle = "white";
+    ctx.font = "32px sans-serif";
+    ctx.fillText("GAME OVER", canvas.width / 2 - 110, canvas.height / 2);
+
+    ctx.font = "18px sans-serif";
+    ctx.fillText("ページを更新すると再開できます", canvas.width / 2 - 130, canvas.height / 2 + 35);
+  }
+}
+
+function update() {
+  if (!gameOver) {
+    clampPlayer();
+    updateBullets();
+    updateEnemies();
+  }
+}
+
+function draw() {
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  drawPlayer();
+  drawBullets();
+  drawEnemies();
+  drawUI();
+}
+
+function loop() {
+  update();
+  draw();
+  requestAnimationFrame(loop);
+}
+
+loop();
+</script>
 </body>
 </html>
