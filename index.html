@@ -3,17 +3,17 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>アニメ風ロボット無双</title>
+<title>コックピット戦闘ゲーム</title>
 <style>
   body {
     margin: 0;
     overflow: hidden;
-    background: #05070b;
+    background: #030508;
     touch-action: none;
   }
   canvas {
     display: block;
-    background: #05070b;
+    background: #030508;
   }
 </style>
 </head>
@@ -41,12 +41,13 @@ let enemies = [];
 let buildings = [];
 let effects = [];
 let frameCount = 0;
+let minaMessage = "戦闘開始。周囲を警戒してください。";
 
 const player = {
   x: canvas.width / 2,
-  y: canvas.height / 2,
-  size: 28,
-  speed: 3.3,
+  y: canvas.height * 0.78,
+  size: 34,
+  speed: 3.2,
   hp: 5,
   invincible: 120,
   crushTimer: 0,
@@ -73,9 +74,40 @@ function addEffect(x, y, color, size, life) {
   effects.push({ x, y, color, size, life, maxLife: life });
 }
 
+function setMinaMessage() {
+  if (gameOver) {
+    minaMessage = "戦闘不能です。画面タップで再起動できます。";
+    return;
+  }
+
+  if (player.hp <= 2) {
+    minaMessage = "警告。耐久値が低下しています。";
+    return;
+  }
+
+  const nearEnemies = enemies.filter(e => distance(player.x, player.y, e.x, e.y) < 180).length;
+
+  if (nearEnemies >= 4) {
+    minaMessage = "敵が密集しています。踏み潰し攻撃を推奨。";
+    return;
+  }
+
+  if (enemies.length >= 8) {
+    minaMessage = "敵影多数。周囲を制圧してください。";
+    return;
+  }
+
+  if (buildings.some(b => b.hp > 0 && b.hp <= 2)) {
+    minaMessage = "建造物の崩壊を確認。戦場が開けています。";
+    return;
+  }
+
+  minaMessage = "索敵中。敵をロックオンしています。";
+}
+
 function playerHitsBuilding(nx, ny) {
   for (const b of buildings) {
-    if (b.hp > 0 && rectHit(nx, ny, player.size, player.size, b.x, b.y, b.w, b.h)) {
+    if (b.hp > 0 && rectHit(nx - 10, ny - 10, 20, 20, b.x, b.y, b.w, b.h)) {
       return true;
     }
   }
@@ -93,7 +125,7 @@ function bulletHitsBuilding(bullet) {
 
 function enemyHitsBuildingRect(nx, ny, size) {
   for (const b of buildings) {
-    if (b.hp > 0 && rectHit(nx, ny, size, size, b.x, b.y, b.w, b.h)) {
+    if (b.hp > 0 && rectHit(nx - size / 2, ny - size / 2, size, size, b.x, b.y, b.w, b.h)) {
       return true;
     }
   }
@@ -102,10 +134,10 @@ function enemyHitsBuildingRect(nx, ny, size) {
 
 function randomEdgePosition() {
   const side = Math.floor(Math.random() * 4);
-  if (side === 0) return { x: Math.random() * canvas.width, y: -30 };
-  if (side === 1) return { x: canvas.width + 30, y: Math.random() * canvas.height };
-  if (side === 2) return { x: Math.random() * canvas.width, y: canvas.height + 30 };
-  return { x: -30, y: Math.random() * canvas.height };
+  if (side === 0) return { x: Math.random() * canvas.width, y: -20 };
+  if (side === 1) return { x: canvas.width + 20, y: Math.random() * (canvas.height * 0.65) };
+  if (side === 2) return { x: Math.random() * canvas.width, y: canvas.height * 0.68 };
+  return { x: -20, y: Math.random() * (canvas.height * 0.65) };
 }
 
 function createBuildings() {
@@ -115,17 +147,17 @@ function createBuildings() {
     tries++;
 
     const b = {
-      x: 40 + Math.random() * (canvas.width - 170),
-      y: 120 + Math.random() * (canvas.height - 280),
-      w: 70 + Math.random() * 45,
-      h: 70 + Math.random() * 45,
+      x: 30 + Math.random() * (canvas.width - 120),
+      y: 70 + Math.random() * (canvas.height * 0.45),
+      w: 45 + Math.random() * 30,
+      h: 60 + Math.random() * 40,
       hp: 6,
       maxHp: 6
     };
 
     const tooCloseToPlayer =
-      Math.abs((b.x + b.w / 2) - player.x) < 150 &&
-      Math.abs((b.y + b.h / 2) - player.y) < 150;
+      Math.abs((b.x + b.w / 2) - player.x) < 120 &&
+      Math.abs((b.y + b.h / 2) - (player.y - 120)) < 120;
 
     let overlap = false;
     for (const other of buildings) {
@@ -151,15 +183,15 @@ function spawnEnemy() {
   enemies.push({
     x: pos.x,
     y: pos.y,
-    size: 22,
+    size: 14,
     type: type,
-    speed: type === "chase" ? 1.5 : type === "run" ? 1.9 : 1.25,
+    speed: type === "chase" ? 1.25 : type === "run" ? 1.55 : 1.05,
     hp: type === "chase" ? 2 : 1,
     moveTimer: 0,
     dirX: 0,
     dirY: 0,
-    shootCooldown: 30 + Math.floor(Math.random() * 40),
-    color: type === "chase" ? "#ff3b3b" : type === "run" ? "#ffae00" : "#b000ff"
+    shootCooldown: 40 + Math.floor(Math.random() * 40),
+    color: type === "chase" ? "#ff4a4a" : type === "run" ? "#ffb020" : "#c050ff"
   });
 }
 
@@ -180,44 +212,39 @@ function shootAuto() {
   const dir = normalize(nearest.x - player.x, nearest.y - player.y);
 
   bullets.push({
-    x: player.x + player.size / 2 - 3,
-    y: player.y + player.size / 2 - 3,
+    x: player.x - 3,
+    y: player.y - 10,
     dx: dir.x * 7.5,
     dy: dir.y * 7.5,
     size: 6
   });
 
-  addEffect(player.x + player.size / 2, player.y + player.size / 2, "#88eeff", 14, 8);
+  addEffect(player.x, player.y - 4, "#88eeff", 12, 8);
 }
 
 function enemyShoot(e) {
-  const px = player.x + player.size / 2;
-  const py = player.y + player.size / 2;
-  const ex = e.x + e.size / 2;
-  const ey = e.y + e.size / 2;
-
-  const dir = normalize(px - ex, py - ey);
+  const dir = normalize(player.x - e.x, player.y - e.y);
 
   enemyBullets.push({
-    x: ex - 3,
-    y: ey - 3,
-    dx: dir.x * 3.2,
-    dy: dir.y * 3.2,
-    size: 6
+    x: e.x - 3,
+    y: e.y - 3,
+    dx: dir.x * 3.0,
+    dy: dir.y * 3.0,
+    size: 5
   });
 
-  addEffect(ex, ey, "#ffd966", 10, 6);
+  addEffect(e.x, e.y, "#ffd966", 8, 6);
 }
 
 function damageBuilding(building, amount) {
   if (!building || building.hp <= 0) return;
 
   building.hp -= amount;
-  addEffect(building.x + building.w / 2, building.y + building.h / 2, "#bbbbbb", 16, 10);
+  addEffect(building.x + building.w / 2, building.y + building.h / 2, "#bbbbbb", 12, 8);
 
   if (building.hp <= 0) {
     building.hp = 0;
-    addEffect(building.x + building.w / 2, building.y + building.h / 2, "#ff4444", 40, 18);
+    addEffect(building.x + building.w / 2, building.y + building.h / 2, "#ff4444", 34, 18);
     score += 5;
   }
 }
@@ -229,20 +256,15 @@ function triggerCrush() {
   player.crushTimer = 18;
   player.crushCooldown = 90;
 
-  const crushRadius = 78;
-  const px = player.x + player.size / 2;
-  const py = player.y + player.size / 2;
-
-  addEffect(px, py, "rgba(255,120,80,0.65)", 78, 16);
+  const crushRadius = 85;
+  addEffect(player.x, player.y, "rgba(255,120,80,0.65)", 85, 16);
 
   for (let i = enemies.length - 1; i >= 0; i--) {
     const e = enemies[i];
-    const ex = e.x + e.size / 2;
-    const ey = e.y + e.size / 2;
-    const d = distance(px, py, ex, ey);
+    const d = distance(player.x, player.y, e.x, e.y);
 
     if (d < crushRadius) {
-      addEffect(ex, ey, e.color, 20, 10);
+      addEffect(e.x, e.y, e.color, 16, 10);
       enemies.splice(i, 1);
       score += 15;
     }
@@ -252,9 +274,9 @@ function triggerCrush() {
     if (b.hp <= 0) continue;
     const bx = b.x + b.w / 2;
     const by = b.y + b.h / 2;
-    const d = distance(px, py, bx, by);
+    const d = distance(player.x, player.y - 60, bx, by);
 
-    if (d < crushRadius + Math.max(b.w, b.h) * 0.35) {
+    if (d < crushRadius + 30) {
       damageBuilding(b, 10);
     }
   }
@@ -273,13 +295,14 @@ function resetGame() {
   frameCount = 0;
 
   player.x = canvas.width / 2;
-  player.y = canvas.height / 2;
+  player.y = canvas.height * 0.78;
   player.hp = 5;
   player.invincible = 120;
   player.crushTimer = 0;
   player.crushCooldown = 0;
 
   createBuildings();
+  setMinaMessage();
 }
 
 canvas.addEventListener("touchstart", function(e) {
@@ -320,10 +343,8 @@ canvas.addEventListener("touchend", function(e) {
 
 function updatePlayer() {
   if (touchX !== null && touchY !== null) {
-    const centerX = player.x + player.size / 2;
-    const centerY = player.y + player.size / 2;
-    const dir = normalize(touchX - centerX, touchY - centerY);
-    const dist = distance(centerX, centerY, touchX, touchY);
+    const dir = normalize(touchX - player.x, touchY - player.y);
+    const dist = distance(player.x, player.y, touchX, touchY);
 
     if (dist > 8) {
       const nx = player.x + dir.x * player.speed;
@@ -332,14 +353,14 @@ function updatePlayer() {
       if (!playerHitsBuilding(nx, player.y)) {
         player.x = nx;
       }
-      if (!playerHitsBuilding(player.x, ny)) {
+      if (!playerHitsBuilding(player.x, ny - 40)) {
         player.y = ny;
       }
     }
   }
 
-  player.x = Math.max(0, Math.min(canvas.width - player.size, player.x));
-  player.y = Math.max(0, Math.min(canvas.height - player.size, player.y));
+  player.x = Math.max(20, Math.min(canvas.width - 20, player.x));
+  player.y = Math.max(canvas.height * 0.45, Math.min(canvas.height - 70, player.y));
 
   if (player.invincible > 0) player.invincible--;
   if (player.crushTimer > 0) player.crushTimer--;
@@ -380,11 +401,11 @@ function updateEnemyBullets() {
       continue;
     }
 
-    if (rectHit(b.x, b.y, b.size, b.size, player.x, player.y, player.size, player.size)) {
+    if (rectHit(b.x, b.y, b.size, b.size, player.x - 10, player.y - 10, 20, 20)) {
       if (player.invincible <= 0) {
         player.hp--;
         player.invincible = 60;
-        addEffect(player.x + player.size / 2, player.y + player.size / 2, "#fff5aa", 16, 10);
+        addEffect(player.x, player.y, "#fff5aa", 16, 10);
 
         if (player.hp <= 0) {
           player.hp = 0;
@@ -407,23 +428,18 @@ function updateEnemyBullets() {
 function updateEnemies() {
   for (let i = enemies.length - 1; i >= 0; i--) {
     const e = enemies[i];
-
-    const px = player.x + player.size / 2;
-    const py = player.y + player.size / 2;
-    const ex = e.x + e.size / 2;
-    const ey = e.y + e.size / 2;
-    const dist = distance(ex, ey, px, py);
+    const dist = distance(e.x, e.y, player.x, player.y);
 
     let moveX = 0;
     let moveY = 0;
 
     if (e.type === "chase") {
-      const dir = normalize(px - ex, py - ey);
+      const dir = normalize(player.x - e.x, player.y - e.y);
       moveX = dir.x * e.speed;
       moveY = dir.y * e.speed;
     } else if (e.type === "run") {
       if (dist < 180) {
-        const dir = normalize(ex - px, ey - py);
+        const dir = normalize(e.x - player.x, e.y - player.y);
         moveX = dir.x * e.speed;
         moveY = dir.y * e.speed;
       } else {
@@ -434,8 +450,8 @@ function updateEnemies() {
           e.dirX = Math.cos(angle);
           e.dirY = Math.sin(angle);
         }
-        moveX = e.dirX * 1.1;
-        moveY = e.dirY * 1.1;
+        moveX = e.dirX * 1.0;
+        moveY = e.dirY * 1.0;
       }
     } else if (e.type === "hide") {
       let nearestBuilding = null;
@@ -445,7 +461,7 @@ function updateEnemies() {
         if (b.hp <= 0) continue;
         const bx = b.x + b.w / 2;
         const by = b.y + b.h / 2;
-        const bd = distance(ex, ey, bx, by);
+        const bd = distance(e.x, e.y, bx, by);
         if (bd < bestDist) {
           bestDist = bd;
           nearestBuilding = b;
@@ -457,16 +473,16 @@ function updateEnemies() {
         const by = nearestBuilding.y + nearestBuilding.h / 2;
 
         if (dist < 110) {
-          const dir = normalize(ex - px, ey - py);
+          const dir = normalize(e.x - player.x, e.y - player.y);
           moveX = dir.x * e.speed;
           moveY = dir.y * e.speed;
         } else {
-          const dir = normalize(bx - ex, by - ey);
+          const dir = normalize(bx - e.x, by - e.y);
           moveX = dir.x * e.speed * 0.9;
           moveY = dir.y * e.speed * 0.9;
         }
       } else {
-        const dir = normalize(px - ex, py - ey);
+        const dir = normalize(player.x - e.x, player.y - e.y);
         moveX = dir.x * 0.7;
         moveY = dir.y * 0.7;
       }
@@ -481,22 +497,22 @@ function updateEnemies() {
     e.shootCooldown--;
     if (e.shootCooldown <= 0) {
       const canShoot =
-        (e.type === "chase" && dist < 260) ||
+        (e.type === "chase" && dist < 250) ||
         (e.type === "run" && dist < 180) ||
-        (e.type === "hide" && dist < 300);
+        (e.type === "hide" && dist < 280);
 
       if (canShoot) {
         enemyShoot(e);
       }
 
-      e.shootCooldown = e.type === "chase" ? 70 : e.type === "run" ? 110 : 80;
+      e.shootCooldown = e.type === "chase" ? 70 : e.type === "run" ? 110 : 85;
     }
 
-    if (rectHit(e.x, e.y, e.size, e.size, player.x, player.y, player.size, player.size)) {
+    if (rectHit(e.x - 7, e.y - 7, 14, 14, player.x - 14, player.y - 14, 28, 28)) {
       if (player.invincible <= 0) {
         player.hp--;
         player.invincible = 60;
-        addEffect(player.x + player.size / 2, player.y + player.size / 2, "#ffffff", 18, 10);
+        addEffect(player.x, player.y, "#ffffff", 18, 10);
 
         if (player.hp <= 0) {
           player.hp = 0;
@@ -507,10 +523,10 @@ function updateEnemies() {
 
     for (let j = bullets.length - 1; j >= 0; j--) {
       const b = bullets[j];
-      if (rectHit(b.x, b.y, b.size, b.size, e.x, e.y, e.size, e.size)) {
+      if (rectHit(b.x, b.y, b.size, b.size, e.x - 7, e.y - 7, 14, 14)) {
         e.hp--;
         bullets.splice(j, 1);
-        addEffect(e.x + e.size / 2, e.y + e.size / 2, e.color, 12, 8);
+        addEffect(e.x, e.y, e.color, 12, 8);
 
         if (e.hp <= 0) {
           enemies.splice(i, 1);
@@ -541,27 +557,36 @@ function update() {
     updateEffects();
 
     if (frameCount % 16 === 0) shootAuto();
-    if (frameCount % 52 === 0) spawnEnemy();
+    if (frameCount % 55 === 0) spawnEnemy();
   } else {
     updateEffects();
   }
+
+  setMinaMessage();
 }
 
 function drawBackground() {
-  ctx.fillStyle = "#05070b";
+  const sky = ctx.createLinearGradient(0, 0, 0, canvas.height);
+  sky.addColorStop(0, "#07131f");
+  sky.addColorStop(0.55, "#10273a");
+  sky.addColorStop(1, "#1c1b1b");
+  ctx.fillStyle = sky;
   ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-  ctx.strokeStyle = "rgba(255,255,255,0.04)";
+  ctx.fillStyle = "#2a2a2a";
+  ctx.beginPath();
+  ctx.moveTo(0, canvas.height * 0.72);
+  ctx.lineTo(canvas.width, canvas.height * 0.72);
+  ctx.lineTo(canvas.width, canvas.height);
+  ctx.lineTo(0, canvas.height);
+  ctx.closePath();
+  ctx.fill();
+
+  ctx.strokeStyle = "rgba(0,255,170,0.08)";
   ctx.lineWidth = 1;
 
-  for (let x = 0; x < canvas.width; x += 40) {
-    ctx.beginPath();
-    ctx.moveTo(x, 0);
-    ctx.lineTo(x, canvas.height);
-    ctx.stroke();
-  }
-
-  for (let y = 0; y < canvas.height; y += 40) {
+  for (let i = 0; i < 12; i++) {
+    const y = canvas.height * 0.2 + i * 40;
     ctx.beginPath();
     ctx.moveTo(0, y);
     ctx.lineTo(canvas.width, y);
@@ -571,72 +596,62 @@ function drawBackground() {
 
 function drawBuildings() {
   for (const b of buildings) {
+    const scale = 0.85 + (b.y / canvas.height) * 0.55;
+    const w = b.w * scale;
+    const h = b.h * scale;
+    const x = b.x;
+    const y = b.y;
+
     if (b.hp <= 0) {
       ctx.fillStyle = "#aa2222";
-      ctx.fillRect(b.x, b.y, b.w, b.h);
+      ctx.fillRect(x, y, w, h);
       continue;
     }
 
     ctx.fillStyle = "#7d7d7d";
-    ctx.fillRect(b.x, b.y, b.w, b.h);
+    ctx.fillRect(x, y, w, h);
 
     ctx.fillStyle = "#5e5e5e";
-    ctx.fillRect(b.x + 6, b.y + 6, b.w - 12, b.h - 12);
+    ctx.fillRect(x + 5, y + 5, w - 10, h - 10);
 
     ctx.fillStyle = "#9a9a9a";
-    for (let wx = b.x + 12; wx < b.x + b.w - 10; wx += 18) {
-      for (let wy = b.y + 12; wy < b.y + b.h - 10; wy += 18) {
-        ctx.fillRect(wx, wy, 6, 8);
+    for (let wx = x + 10; wx < x + w - 8; wx += 14) {
+      for (let wy = y + 10; wy < y + h - 8; wy += 14) {
+        ctx.fillRect(wx, wy, 5, 6);
       }
     }
 
     ctx.fillStyle = "rgba(0,0,0,0.35)";
-    ctx.fillRect(b.x, b.y - 8, b.w, 5);
+    ctx.fillRect(x, y - 8, w, 4);
     ctx.fillStyle = "#66ff66";
-    ctx.fillRect(b.x, b.y - 8, b.w * (b.hp / b.maxHp), 5);
+    ctx.fillRect(x, y - 8, w * (b.hp / b.maxHp), 4);
   }
 }
 
-function drawPlayer() {
-  const x = player.x;
-  const y = player.y;
-  const s = player.size;
+function drawHumanEnemy(e) {
+  const s = e.size;
+  const x = e.x;
+  const y = e.y;
 
-  if (player.crushTimer > 0) {
-    ctx.beginPath();
-    ctx.arc(x + s / 2, y + s / 2, 78, 0, Math.PI * 2);
-    ctx.fillStyle = "rgba(255,120,80,0.18)";
-    ctx.fill();
-    ctx.strokeStyle = "rgba(255,180,120,0.8)";
-    ctx.lineWidth = 3;
-    ctx.stroke();
+  ctx.fillStyle = "rgba(0,0,0,0.25)";
+  ctx.fillRect(x - 4, y - 10, 8, 20);
+
+  ctx.fillStyle = e.color;
+  ctx.beginPath();
+  ctx.arc(x, y - 6, 4, 0, Math.PI * 2);
+  ctx.fill();
+
+  ctx.fillRect(x - 3, y - 2, 6, 10);
+  ctx.fillRect(x - 6, y + 1, 3, 8);
+  ctx.fillRect(x + 3, y + 1, 3, 8);
+  ctx.fillRect(x - 3, y + 8, 2, 7);
+  ctx.fillRect(x + 1, y + 8, 2, 7);
+}
+
+function drawEnemies() {
+  for (const e of enemies) {
+    drawHumanEnemy(e);
   }
-
-  ctx.fillStyle = "rgba(0,0,0,0.28)";
-  ctx.fillRect(x + 4, y + 5, s, s);
-
-  if (player.invincible > 0 && Math.floor(player.invincible / 5) % 2 === 0) {
-    ctx.fillStyle = "#7ffcff";
-  } else {
-    ctx.fillStyle = "#00e5ff";
-  }
-
-  ctx.fillRect(x + 5, y, s - 10, 10);
-  ctx.fillRect(x, y + 8, s, s - 10);
-
-  ctx.fillStyle = "#00b7cf";
-  ctx.fillRect(x + 4, y + 12, s - 8, s - 18);
-
-  ctx.fillStyle = "#ffffff";
-  ctx.fillRect(x + 8, y + 2, 4, 3);
-  ctx.fillRect(x + s - 12, y + 2, 4, 3);
-
-  ctx.fillStyle = "#d7ffff";
-  ctx.fillRect(x + s - 1, y + 12, 7, 4);
-
-  ctx.fillStyle = "#0aa8b6";
-  ctx.fillRect(x + 4, y + s - 4, 5, 6);
-  ctx.fillRect(x + s - 9, y + s - 4, 5, 6);
 }
 
 function drawBullets() {
@@ -659,41 +674,6 @@ function drawEnemyBullets() {
   }
 }
 
-function drawEnemyBody(e) {
-  ctx.fillStyle = "rgba(0,0,0,0.25)";
-  ctx.fillRect(e.x + 3, e.y + 3, e.size, e.size);
-
-  ctx.fillStyle = e.color;
-  ctx.fillRect(e.x + 3, e.y, e.size - 6, e.size);
-
-  if (e.type === "chase") {
-    ctx.fillRect(e.x, e.y + 5, e.size, e.size - 10);
-    ctx.fillStyle = "#ffd2d2";
-    ctx.fillRect(e.x + 6, e.y + 6, 3, 3);
-    ctx.fillRect(e.x + e.size - 9, e.y + 6, 3, 3);
-  }
-
-  if (e.type === "run") {
-    ctx.fillRect(e.x + 2, e.y + 4, e.size - 4, e.size - 8);
-    ctx.fillStyle = "#fff0c2";
-    ctx.fillRect(e.x + 5, e.y + 5, 3, 3);
-    ctx.fillRect(e.x + e.size - 8, e.y + 5, 3, 3);
-  }
-
-  if (e.type === "hide") {
-    ctx.fillRect(e.x + 1, e.y + 3, e.size - 2, e.size - 6);
-    ctx.fillStyle = "#f2c8ff";
-    ctx.fillRect(e.x + 5, e.y + 7, 3, 3);
-    ctx.fillRect(e.x + e.size - 8, e.y + 7, 3, 3);
-  }
-}
-
-function drawEnemies() {
-  for (const e of enemies) {
-    drawEnemyBody(e);
-  }
-}
-
 function drawEffects() {
   for (const ef of effects) {
     const alpha = ef.life / ef.maxLife;
@@ -706,40 +686,216 @@ function drawEffects() {
   }
 }
 
-function drawUI() {
-  ctx.fillStyle = "white";
-  ctx.font = "bold 20px Arial";
-  ctx.fillText("SCORE: " + score, 20, 35);
-  ctx.fillText("HP: " + player.hp, 20, 65);
+function drawCrosshair() {
+  const cx = canvas.width / 2;
+  const cy = canvas.height / 2 - 20;
 
-  ctx.font = "14px Arial";
-  ctx.fillStyle = "#d7d7d7";
-  ctx.fillText("赤=迫る  橙=逃げる  紫=隠れる", 20, 90);
-  ctx.fillText("指で移動 / 自動で射撃", 20, 110);
-  ctx.fillText("2本指タップ=踏み潰し", 20, 130);
-  ctx.fillText("建物も壊せる", 20, 150);
+  ctx.strokeStyle = "rgba(0,255,170,0.8)";
+  ctx.lineWidth = 2;
+
+  ctx.beginPath();
+  ctx.moveTo(cx - 18, cy);
+  ctx.lineTo(cx - 6, cy);
+  ctx.moveTo(cx + 6, cy);
+  ctx.lineTo(cx + 18, cy);
+  ctx.moveTo(cx, cy - 18);
+  ctx.lineTo(cx, cy - 6);
+  ctx.moveTo(cx, cy + 6);
+  ctx.lineTo(cx, cy + 18);
+  ctx.stroke();
+
+  ctx.beginPath();
+  ctx.arc(cx, cy, 24, 0, Math.PI * 2);
+  ctx.stroke();
+}
+
+function drawCockpitFrame() {
+  const h = canvas.height;
+  const w = canvas.width;
+
+  ctx.fillStyle = "rgba(0,0,0,0.35)";
+  ctx.beginPath();
+  ctx.moveTo(0, h);
+  ctx.lineTo(0, h - 120);
+  ctx.lineTo(w * 0.18, h - 65);
+  ctx.lineTo(w * 0.82, h - 65);
+  ctx.lineTo(w, h - 120);
+  ctx.lineTo(w, h);
+  ctx.closePath();
+  ctx.fill();
+
+  ctx.strokeStyle = "rgba(0,255,170,0.45)";
+  ctx.lineWidth = 3;
+  ctx.beginPath();
+  ctx.moveTo(0, h - 120);
+  ctx.lineTo(w * 0.18, h - 65);
+  ctx.lineTo(w * 0.82, h - 65);
+  ctx.lineTo(w, h - 120);
+  ctx.stroke();
+
+  ctx.strokeStyle = "rgba(0,255,170,0.25)";
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.moveTo(w * 0.18, h - 65);
+  ctx.lineTo(w * 0.18, h);
+  ctx.moveTo(w * 0.82, h - 65);
+  ctx.lineTo(w * 0.82, h);
+  ctx.stroke();
+}
+
+function drawRobotHands() {
+  const h = canvas.height;
+  const w = canvas.width;
+
+  ctx.fillStyle = "rgba(20,220,255,0.18)";
+  ctx.fillRect(20, h - 150, 70, 110);
+  ctx.fillRect(w - 90, h - 150, 70, 110);
+
+  ctx.fillStyle = "rgba(0,255,170,0.18)";
+  ctx.fillRect(32, h - 135, 46, 80);
+  ctx.fillRect(w - 78, h - 135, 46, 80);
+}
+
+function drawMinaPanel() {
+  const w = 190;
+  const h = 86;
+  const x = canvas.width - w - 14;
+  const y = canvas.height - h - 14;
+
+  ctx.fillStyle = "rgba(0,20,18,0.75)";
+  ctx.fillRect(x, y, w, h);
+
+  ctx.strokeStyle = "rgba(0,255,170,0.65)";
+  ctx.lineWidth = 2;
+  ctx.strokeRect(x, y, w, h);
+
+  ctx.fillStyle = "rgba(0,255,170,0.18)";
+  ctx.fillRect(x + 8, y + 8, 42, 42);
+
+  ctx.fillStyle = "#00ffd0";
+  ctx.beginPath();
+  ctx.arc(x + 29, y + 22, 10, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.fillRect(x + 21, y + 33, 16, 12);
+
+  ctx.fillStyle = "#d8fff6";
+  ctx.font = "bold 13px Arial";
+  ctx.fillText("AI ミナ", x + 58, y + 22);
+
+  ctx.font = "12px Arial";
+  wrapText(minaMessage, x + 58, y + 40, w - 66, 16);
+}
+
+function wrapText(text, x, y, maxWidth, lineHeight) {
+  const chars = text.split("");
+  let line = "";
+  let currentY = y;
+
+  for (let i = 0; i < chars.length; i++) {
+    const testLine = line + chars[i];
+    const metrics = ctx.measureText(testLine);
+    if (metrics.width > maxWidth && line !== "") {
+      ctx.fillText(line, x, currentY);
+      line = chars[i];
+      currentY += lineHeight;
+      if (currentY > y + lineHeight * 2) break;
+    } else {
+      line = testLine;
+    }
+  }
+  if (line) ctx.fillText(line, x, currentY);
+}
+
+function drawRadar() {
+  const x = 18;
+  const y = canvas.height - 130;
+  const size = 92;
+
+  ctx.fillStyle = "rgba(0,20,18,0.65)";
+  ctx.fillRect(x, y, size, size);
+  ctx.strokeStyle = "rgba(0,255,170,0.55)";
+  ctx.strokeRect(x, y, size, size);
+
+  ctx.strokeStyle = "rgba(0,255,170,0.2)";
+  ctx.beginPath();
+  ctx.moveTo(x + size / 2, y);
+  ctx.lineTo(x + size / 2, y + size);
+  ctx.moveTo(x, y + size / 2);
+  ctx.lineTo(x + size, y + size / 2);
+  ctx.stroke();
+
+  ctx.fillStyle = "#00ffd0";
+  ctx.fillRect(x + size / 2 - 2, y + size / 2 - 2, 4, 4);
+
+  for (const e of enemies) {
+    const rx = x + size / 2 + (e.x - player.x) * 0.18;
+    const ry = y + size / 2 + (e.y - player.y) * 0.18;
+    if (rx > x && rx < x + size && ry > y && ry < y + size) {
+      ctx.fillStyle = e.color;
+      ctx.fillRect(rx - 2, ry - 2, 4, 4);
+    }
+  }
+}
+
+function drawUI() {
+  ctx.fillStyle = "#d8fff6";
+  ctx.font = "bold 20px Arial";
+  ctx.fillText("HP: " + player.hp, 18, 30);
+  ctx.fillText("SCORE: " + score, 18, 58);
+
+  ctx.font = "13px Arial";
+  ctx.fillStyle = "#9affdf";
+  ctx.fillText("赤=迫る  橙=逃げる  紫=隠れる", 18, 86);
+  ctx.fillText("2本指タップ=踏み潰し", 18, 104);
 
   if (gameOver) {
     ctx.fillStyle = "rgba(0,0,0,0.58)";
     ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-    ctx.fillStyle = "white";
-    ctx.font = "bold 42px Arial";
-    ctx.fillText("GAME OVER", canvas.width / 2 - 130, canvas.height / 2);
+    ctx.fillStyle = "#ffffff";
+    ctx.font = "bold 40px Arial";
+    ctx.fillText("GAME OVER", canvas.width / 2 - 125, canvas.height / 2);
 
     ctx.font = "20px Arial";
     ctx.fillText("画面タップで再開", canvas.width / 2 - 75, canvas.height / 2 + 38);
   }
 }
 
+function drawPlayerMarker() {
+  if (player.crushTimer > 0) {
+    ctx.beginPath();
+    ctx.arc(player.x, player.y, 85, 0, Math.PI * 2);
+    ctx.fillStyle = "rgba(255,120,80,0.18)";
+    ctx.fill();
+    ctx.strokeStyle = "rgba(255,180,120,0.8)";
+    ctx.lineWidth = 3;
+    ctx.stroke();
+  }
+
+  if (player.invincible > 0 && Math.floor(player.invincible / 5) % 2 === 0) {
+    ctx.fillStyle = "#7ffcff";
+  } else {
+    ctx.fillStyle = "#00e5ff";
+  }
+
+  ctx.beginPath();
+  ctx.arc(player.x, player.y, 8, 0, Math.PI * 2);
+  ctx.fill();
+}
+
 function draw() {
   drawBackground();
   drawBuildings();
-  drawPlayer();
+  drawEnemies();
   drawBullets();
   drawEnemyBullets();
-  drawEnemies();
   drawEffects();
+  drawPlayerMarker();
+  drawCrosshair();
+  drawRobotHands();
+  drawCockpitFrame();
+  drawRadar();
+  drawMinaPanel();
   drawUI();
 }
 
