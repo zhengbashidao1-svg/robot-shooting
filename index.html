@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>ロボット戦闘ゲーム</title>
+<title>アニメ風ロボット無双</title>
 <style>
   body {
     margin: 0;
@@ -45,8 +45,8 @@ let frameCount = 0;
 const player = {
   x: canvas.width / 2,
   y: canvas.height / 2,
-  size: 26,
-  speed: 3.2,
+  size: 28,
+  speed: 3.3,
   hp: 5,
   invincible: 120,
   crushTimer: 0,
@@ -69,9 +69,13 @@ function normalize(dx, dy) {
   return { x: dx / len, y: dy / len };
 }
 
+function addEffect(x, y, color, size, life) {
+  effects.push({ x, y, color, size, life, maxLife: life });
+}
+
 function playerHitsBuilding(nx, ny) {
   for (const b of buildings) {
-    if (rectHit(nx, ny, player.size, player.size, b.x, b.y, b.w, b.h)) {
+    if (b.hp > 0 && rectHit(nx, ny, player.size, player.size, b.x, b.y, b.w, b.h)) {
       return true;
     }
   }
@@ -80,16 +84,16 @@ function playerHitsBuilding(nx, ny) {
 
 function bulletHitsBuilding(bullet) {
   for (const b of buildings) {
-    if (rectHit(bullet.x, bullet.y, bullet.size, bullet.size, b.x, b.y, b.w, b.h)) {
-      return true;
+    if (b.hp > 0 && rectHit(bullet.x, bullet.y, bullet.size, bullet.size, b.x, b.y, b.w, b.h)) {
+      return b;
     }
   }
-  return false;
+  return null;
 }
 
 function enemyHitsBuildingRect(nx, ny, size) {
   for (const b of buildings) {
-    if (rectHit(nx, ny, size, size, b.x, b.y, b.w, b.h)) {
+    if (b.hp > 0 && rectHit(nx, ny, size, size, b.x, b.y, b.w, b.h)) {
       return true;
     }
   }
@@ -104,26 +108,24 @@ function randomEdgePosition() {
   return { x: -30, y: Math.random() * canvas.height };
 }
 
-function addEffect(x, y, color, size, life) {
-  effects.push({ x, y, color, size, life, maxLife: life });
-}
-
 function createBuildings() {
   let tries = 0;
 
-  while (buildings.length < 5 && tries < 200) {
+  while (buildings.length < 6 && tries < 300) {
     tries++;
 
     const b = {
-      x: 40 + Math.random() * (canvas.width - 160),
-      y: 130 + Math.random() * (canvas.height - 280),
-      w: 70 + Math.random() * 40,
-      h: 70 + Math.random() * 40
+      x: 40 + Math.random() * (canvas.width - 170),
+      y: 120 + Math.random() * (canvas.height - 280),
+      w: 70 + Math.random() * 45,
+      h: 70 + Math.random() * 45,
+      hp: 6,
+      maxHp: 6
     };
 
     const tooCloseToPlayer =
-      Math.abs((b.x + b.w / 2) - player.x) < 140 &&
-      Math.abs((b.y + b.h / 2) - player.y) < 140;
+      Math.abs((b.x + b.w / 2) - player.x) < 150 &&
+      Math.abs((b.y + b.h / 2) - player.y) < 150;
 
     let overlap = false;
     for (const other of buildings) {
@@ -151,7 +153,7 @@ function spawnEnemy() {
     y: pos.y,
     size: 22,
     type: type,
-    speed: type === "chase" ? 1.5 : type === "run" ? 1.8 : 1.2,
+    speed: type === "chase" ? 1.5 : type === "run" ? 1.9 : 1.25,
     hp: type === "chase" ? 2 : 1,
     moveTimer: 0,
     dirX: 0,
@@ -180,8 +182,8 @@ function shootAuto() {
   bullets.push({
     x: player.x + player.size / 2 - 3,
     y: player.y + player.size / 2 - 3,
-    dx: dir.x * 7,
-    dy: dir.y * 7,
+    dx: dir.x * 7.5,
+    dy: dir.y * 7.5,
     size: 6
   });
 
@@ -207,6 +209,19 @@ function enemyShoot(e) {
   addEffect(ex, ey, "#ffd966", 10, 6);
 }
 
+function damageBuilding(building, amount) {
+  if (!building || building.hp <= 0) return;
+
+  building.hp -= amount;
+  addEffect(building.x + building.w / 2, building.y + building.h / 2, "#bbbbbb", 16, 10);
+
+  if (building.hp <= 0) {
+    building.hp = 0;
+    addEffect(building.x + building.w / 2, building.y + building.h / 2, "#ff4444", 40, 18);
+    score += 5;
+  }
+}
+
 function triggerCrush() {
   if (gameOver) return;
   if (player.crushCooldown > 0) return;
@@ -214,11 +229,11 @@ function triggerCrush() {
   player.crushTimer = 18;
   player.crushCooldown = 90;
 
-  const crushRadius = 70;
+  const crushRadius = 78;
   const px = player.x + player.size / 2;
   const py = player.y + player.size / 2;
 
-  addEffect(px, py, "rgba(255,120,80,0.65)", 70, 16);
+  addEffect(px, py, "rgba(255,120,80,0.65)", 78, 16);
 
   for (let i = enemies.length - 1; i >= 0; i--) {
     const e = enemies[i];
@@ -230,6 +245,17 @@ function triggerCrush() {
       addEffect(ex, ey, e.color, 20, 10);
       enemies.splice(i, 1);
       score += 15;
+    }
+  }
+
+  for (const b of buildings) {
+    if (b.hp <= 0) continue;
+    const bx = b.x + b.w / 2;
+    const by = b.y + b.h / 2;
+    const d = distance(px, py, bx, by);
+
+    if (d < crushRadius + Math.max(b.w, b.h) * 0.35) {
+      damageBuilding(b, 10);
     }
   }
 }
@@ -326,10 +352,16 @@ function updateBullets() {
     b.x += b.dx;
     b.y += b.dy;
 
+    const hitBuilding = bulletHitsBuilding(b);
+    if (hitBuilding) {
+      damageBuilding(hitBuilding, 1);
+      bullets.splice(i, 1);
+      continue;
+    }
+
     if (
       b.x < -20 || b.x > canvas.width + 20 ||
-      b.y < -20 || b.y > canvas.height + 20 ||
-      bulletHitsBuilding(b)
+      b.y < -20 || b.y > canvas.height + 20
     ) {
       bullets.splice(i, 1);
     }
@@ -342,7 +374,8 @@ function updateEnemyBullets() {
     b.x += b.dx;
     b.y += b.dy;
 
-    if (bulletHitsBuilding(b)) {
+    const hitBuilding = bulletHitsBuilding(b);
+    if (hitBuilding) {
       enemyBullets.splice(i, 1);
       continue;
     }
@@ -409,6 +442,7 @@ function updateEnemies() {
       let bestDist = Infinity;
 
       for (const b of buildings) {
+        if (b.hp <= 0) continue;
         const bx = b.x + b.w / 2;
         const by = b.y + b.h / 2;
         const bd = distance(ex, ey, bx, by);
@@ -431,6 +465,10 @@ function updateEnemies() {
           moveX = dir.x * e.speed * 0.9;
           moveY = dir.y * e.speed * 0.9;
         }
+      } else {
+        const dir = normalize(px - ex, py - ey);
+        moveX = dir.x * 0.7;
+        moveY = dir.y * 0.7;
       }
     }
 
@@ -502,8 +540,8 @@ function update() {
     updateEnemies();
     updateEffects();
 
-    if (frameCount % 20 === 0) shootAuto();
-    if (frameCount % 55 === 0) spawnEnemy();
+    if (frameCount % 16 === 0) shootAuto();
+    if (frameCount % 52 === 0) spawnEnemy();
   } else {
     updateEffects();
   }
@@ -533,6 +571,12 @@ function drawBackground() {
 
 function drawBuildings() {
   for (const b of buildings) {
+    if (b.hp <= 0) {
+      ctx.fillStyle = "#aa2222";
+      ctx.fillRect(b.x, b.y, b.w, b.h);
+      continue;
+    }
+
     ctx.fillStyle = "#7d7d7d";
     ctx.fillRect(b.x, b.y, b.w, b.h);
 
@@ -545,36 +589,54 @@ function drawBuildings() {
         ctx.fillRect(wx, wy, 6, 8);
       }
     }
+
+    ctx.fillStyle = "rgba(0,0,0,0.35)";
+    ctx.fillRect(b.x, b.y - 8, b.w, 5);
+    ctx.fillStyle = "#66ff66";
+    ctx.fillRect(b.x, b.y - 8, b.w * (b.hp / b.maxHp), 5);
   }
 }
 
 function drawPlayer() {
+  const x = player.x;
+  const y = player.y;
+  const s = player.size;
+
   if (player.crushTimer > 0) {
     ctx.beginPath();
-    ctx.arc(player.x + player.size / 2, player.y + player.size / 2, 70, 0, Math.PI * 2);
+    ctx.arc(x + s / 2, y + s / 2, 78, 0, Math.PI * 2);
     ctx.fillStyle = "rgba(255,120,80,0.18)";
     ctx.fill();
-    ctx.strokeStyle = "rgba(255,180,120,0.7)";
+    ctx.strokeStyle = "rgba(255,180,120,0.8)";
     ctx.lineWidth = 3;
     ctx.stroke();
   }
 
+  ctx.fillStyle = "rgba(0,0,0,0.28)";
+  ctx.fillRect(x + 4, y + 5, s, s);
+
   if (player.invincible > 0 && Math.floor(player.invincible / 5) % 2 === 0) {
-    ctx.fillStyle = "#77ffff";
+    ctx.fillStyle = "#7ffcff";
   } else {
-    ctx.fillStyle = "#20e0e8";
+    ctx.fillStyle = "#00e5ff";
   }
 
-  ctx.fillRect(player.x + 4, player.y, player.size - 8, player.size);
-  ctx.fillStyle = "#0ab4c0";
-  ctx.fillRect(player.x, player.y + 5, player.size, player.size - 10);
+  ctx.fillRect(x + 5, y, s - 10, 10);
+  ctx.fillRect(x, y + 8, s, s - 10);
 
-  ctx.fillStyle = "#bdfcff";
-  ctx.fillRect(player.x + 8, player.y + 6, 4, 4);
-  ctx.fillRect(player.x + player.size - 12, player.y + 6, 4, 4);
+  ctx.fillStyle = "#00b7cf";
+  ctx.fillRect(x + 4, y + 12, s - 8, s - 18);
 
-  ctx.fillStyle = "#dffcff";
-  ctx.fillRect(player.x + player.size - 2, player.y + 10, 6, 4);
+  ctx.fillStyle = "#ffffff";
+  ctx.fillRect(x + 8, y + 2, 4, 3);
+  ctx.fillRect(x + s - 12, y + 2, 4, 3);
+
+  ctx.fillStyle = "#d7ffff";
+  ctx.fillRect(x + s - 1, y + 12, 7, 4);
+
+  ctx.fillStyle = "#0aa8b6";
+  ctx.fillRect(x + 4, y + s - 4, 5, 6);
+  ctx.fillRect(x + s - 9, y + s - 4, 5, 6);
 }
 
 function drawBullets() {
@@ -598,6 +660,9 @@ function drawEnemyBullets() {
 }
 
 function drawEnemyBody(e) {
+  ctx.fillStyle = "rgba(0,0,0,0.25)";
+  ctx.fillRect(e.x + 3, e.y + 3, e.size, e.size);
+
   ctx.fillStyle = e.color;
   ctx.fillRect(e.x + 3, e.y, e.size - 6, e.size);
 
@@ -652,6 +717,7 @@ function drawUI() {
   ctx.fillText("赤=迫る  橙=逃げる  紫=隠れる", 20, 90);
   ctx.fillText("指で移動 / 自動で射撃", 20, 110);
   ctx.fillText("2本指タップ=踏み潰し", 20, 130);
+  ctx.fillText("建物も壊せる", 20, 150);
 
   if (gameOver) {
     ctx.fillStyle = "rgba(0,0,0,0.58)";
