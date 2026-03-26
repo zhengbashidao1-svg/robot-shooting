@@ -5,111 +5,459 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>ロボット戦闘ゲーム</title>
 <style>
-body { margin: 0; background: black; overflow: hidden; }
-canvas { display: block; }
+  body {
+    margin: 0;
+    overflow: hidden;
+    background: black;
+    touch-action: none;
+  }
+  canvas {
+    display: block;
+    background: black;
+  }
 </style>
 </head>
 <body>
-
 <canvas id="game"></canvas>
 
 <script>
 const canvas = document.getElementById("game");
 const ctx = canvas.getContext("2d");
 
-canvas.width = window.innerWidth;
-canvas.height = window.innerHeight;
+function resizeCanvas() {
+  canvas.width = window.innerWidth;
+  canvas.height = window.innerHeight;
+}
+resizeCanvas();
+window.addEventListener("resize", resizeCanvas);
 
-let keys = {};
+let score = 0;
+let gameOver = false;
+let touchX = null;
+let touchY = null;
 let bullets = [];
 let enemies = [];
 let buildings = [];
-
-let score = 0;
-let hp = 5;
-let gameOver = false;
+let frameCount = 0;
 
 const player = {
   x: canvas.width / 2,
   y: canvas.height / 2,
-  size: 25,
-  speed: 4
+  size: 24,
+  speed: 3.2,
+  hp: 5,
+  invincible: 120
 };
 
-// キー入力
-window.addEventListener("keydown", e => keys[e.key] = true);
-window.addEventListener("keyup", e => keys[e.key] = false);
+function resetGame() {
+  score = 0;
+  gameOver = false;
+  touchX = null;
+  touchY = null;
+  bullets = [];
+  enemies = [];
+  buildings = [];
+  frameCount = 0;
 
-// 建物生成
+  player.x = canvas.width / 2;
+  player.y = canvas.height / 2;
+  player.hp = 5;
+  player.invincible = 120;
+
+  createBuildings();
+}
+
 function createBuildings() {
-  for (let i = 0; i < 5; i++) {
-    buildings.push({
-      x: Math.random() * (canvas.width - 100),
-      y: Math.random() * (canvas.height - 100),
-      w: 80,
-      h: 80
-    });
+  let tries = 0;
+
+  while (buildings.length < 5 && tries < 200) {
+    tries++;
+
+    const b = {
+      x: 40 + Math.random() * (canvas.width - 140),
+      y: 120 + Math.random() * (canvas.height - 260),
+      w: 70 + Math.random() * 30,
+      h: 70 + Math.random() * 30
+    };
+
+    const tooCloseToPlayer =
+      Math.abs((b.x + b.w / 2) - player.x) < 120 &&
+      Math.abs((b.y + b.h / 2) - player.y) < 120;
+
+    if (!tooCloseToPlayer) {
+      buildings.push(b);
+    }
   }
 }
 
-createBuildings();
-
-// 衝突判定
-function hitRect(a, b) {
-  return a.x < b.x + b.w &&
-         a.x + a.size > b.x &&
-         a.y < b.y + b.h &&
-         a.y + a.size > b.y;
+function rectHit(ax, ay, aw, ah, bx, by, bw, bh) {
+  return ax < bx + bw &&
+         ax + aw > bx &&
+         ay < by + bh &&
+         ay + ah > by;
 }
 
-// 弾発射
-window.addEventListener("click", e => {
-  bullets.push({
-    x: player.x,
-    y: player.y,
-    dx: (e.clientX - player.x) / 10,
-    dy: (e.clientY - player.y) / 10,
-    size: 6
-  });
-});
+function playerHitsBuilding(nx, ny) {
+  for (const b of buildings) {
+    if (rectHit(nx, ny, player.size, player.size, b.x, b.y, b.w, b.h)) {
+      return true;
+    }
+  }
+  return false;
+}
 
-// 敵生成
+function bulletHitsBuilding(bullet) {
+  for (const b of buildings) {
+    if (rectHit(bullet.x, bullet.y, bullet.size, bullet.size, b.x, b.y, b.w, b.h)) {
+      return true;
+    }
+  }
+  return false;
+}
+
+function enemyHitsBuilding(enemy) {
+  for (const b of buildings) {
+    if (rectHit(enemy.x, enemy.y, enemy.size, enemy.size, b.x, b.y, b.w, b.h)) {
+      return true;
+    }
+  }
+  return false;
+}
+
+function distance(ax, ay, bx, by) {
+  return Math.hypot(bx - ax, by - ay);
+}
+
+function normalize(dx, dy) {
+  const len = Math.hypot(dx, dy) || 1;
+  return { x: dx / len, y: dy / len };
+}
+
+function randomEdgePosition() {
+  const side = Math.floor(Math.random() * 4);
+
+  if (side === 0) return { x: Math.random() * canvas.width, y: -30 };
+  if (side === 1) return { x: canvas.width + 30, y: Math.random() * canvas.height };
+  if (side === 2) return { x: Math.random() * canvas.width, y: canvas.height + 30 };
+  return { x: -30, y: Math.random() * canvas.height };
+}
+
 function spawnEnemy() {
   if (gameOver) return;
 
-  const side = Math.floor(Math.random() * 4);
-  let x, y;
-
-  if (side === 0) { x = Math.random() * canvas.width; y = -20; }
-  if (side === 1) { x = canvas.width + 20; y = Math.random() * canvas.height; }
-  if (side === 2) { x = Math.random() * canvas.width; y = canvas.height + 20; }
-  if (side === 3) { x = -20; y = Math.random() * canvas.height; }
-
+  const pos = randomEdgePosition();
   const types = ["chase", "run", "hide"];
-  const type = types[Math.floor(Math.random() * 3)];
+  const type = types[Math.floor(Math.random() * types.length)];
 
   enemies.push({
-    x, y,
+    x: pos.x,
+    y: pos.y,
     size: 22,
-    type
+    type: type,
+    speed: type === "chase" ? 1.5 : type === "run" ? 1.8 : 1.2,
+    hp: type === "chase" ? 2 : 1,
+    moveTimer: 0,
+    dirX: 0,
+    dirY: 0,
+    color: type === "chase" ? "red" : type === "run" ? "orange" : "purple"
   });
 }
 
-setInterval(spawnEnemy, 1000);
+function shootAuto() {
+  if (enemies.length === 0) return;
 
-// 更新
+  let nearest = enemies[0];
+  let bestDist = Infinity;
+
+  for (const e of enemies) {
+    const d = distance(player.x, player.y, e.x, e.y);
+    if (d < bestDist) {
+      bestDist = d;
+      nearest = e;
+    }
+  }
+
+  const dir = normalize(nearest.x - player.x, nearest.y - player.y);
+
+  bullets.push({
+    x: player.x + player.size / 2 - 3,
+    y: player.y + player.size / 2 - 3,
+    dx: dir.x * 7,
+    dy: dir.y * 7,
+    size: 6
+  });
+}
+
+canvas.addEventListener("touchstart", function(e) {
+  e.preventDefault();
+
+  if (gameOver) {
+    resetGame();
+    return;
+  }
+
+  const touch = e.touches[0];
+  touchX = touch.clientX;
+  touchY = touch.clientY;
+}, { passive: false });
+
+canvas.addEventListener("touchmove", function(e) {
+  e.preventDefault();
+
+  if (gameOver) return;
+
+  const touch = e.touches[0];
+  touchX = touch.clientX;
+  touchY = touch.clientY;
+}, { passive: false });
+
+canvas.addEventListener("touchend", function(e) {
+  e.preventDefault();
+  touchX = null;
+  touchY = null;
+}, { passive: false });
+
+function updatePlayer() {
+  if (touchX === null || touchY === null) return;
+
+  const centerX = player.x + player.size / 2;
+  const centerY = player.y + player.size / 2;
+  const dir = normalize(touchX - centerX, touchY - centerY);
+
+  const dist = distance(centerX, centerY, touchX, touchY);
+
+  if (dist > 8) {
+    const nx = player.x + dir.x * player.speed;
+    const ny = player.y + dir.y * player.speed;
+
+    if (!playerHitsBuilding(nx, player.y)) {
+      player.x = nx;
+    }
+    if (!playerHitsBuilding(player.x, ny)) {
+      player.y = ny;
+    }
+  }
+
+  player.x = Math.max(0, Math.min(canvas.width - player.size, player.x));
+  player.y = Math.max(0, Math.min(canvas.height - player.size, player.y));
+
+  if (player.invincible > 0) {
+    player.invincible--;
+  }
+}
+
+function updateBullets() {
+  for (let i = bullets.length - 1; i >= 0; i--) {
+    const b = bullets[i];
+    b.x += b.dx;
+    b.y += b.dy;
+
+    if (
+      b.x < -20 || b.x > canvas.width + 20 ||
+      b.y < -20 || b.y > canvas.height + 20 ||
+      bulletHitsBuilding(b)
+    ) {
+      bullets.splice(i, 1);
+    }
+  }
+}
+
+function updateEnemies() {
+  for (let i = enemies.length - 1; i >= 0; i--) {
+    const e = enemies[i];
+
+    const px = player.x + player.size / 2;
+    const py = player.y + player.size / 2;
+    const ex = e.x + e.size / 2;
+    const ey = e.y + e.size / 2;
+    const dist = distance(ex, ey, px, py);
+
+    let moveX = 0;
+    let moveY = 0;
+
+    if (e.type === "chase") {
+      const dir = normalize(px - ex, py - ey);
+      moveX = dir.x * e.speed;
+      moveY = dir.y * e.speed;
+    }
+
+    else if (e.type === "run") {
+      if (dist < 180) {
+        const dir = normalize(ex - px, ey - py);
+        moveX = dir.x * e.speed;
+        moveY = dir.y * e.speed;
+      } else {
+        e.moveTimer--;
+        if (e.moveTimer <= 0) {
+          e.moveTimer = 20 + Math.floor(Math.random() * 40);
+          const angle = Math.random() * Math.PI * 2;
+          e.dirX = Math.cos(angle);
+          e.dirY = Math.sin(angle);
+        }
+        moveX = e.dirX * 1.1;
+        moveY = e.dirY * 1.1;
+      }
+    }
+
+    else if (e.type === "hide") {
+      let nearestBuilding = null;
+      let bestDist = Infinity;
+
+      for (const b of buildings) {
+        const bx = b.x + b.w / 2;
+        const by = b.y + b.h / 2;
+        const bd = distance(ex, ey, bx, by);
+        if (bd < bestDist) {
+          bestDist = bd;
+          nearestBuilding = b;
+        }
+      }
+
+      if (nearestBuilding) {
+        const bx = nearestBuilding.x + nearestBuilding.w / 2;
+        const by = nearestBuilding.y + nearestBuilding.h / 2;
+
+        if (dist < 110) {
+          const dir = normalize(ex - px, ey - py);
+          moveX = dir.x * e.speed;
+          moveY = dir.y * e.speed;
+        } else {
+          const dir = normalize(bx - ex, by - ey);
+          moveX = dir.x * e.speed * 0.9;
+          moveY = dir.y * e.speed * 0.9;
+        }
+      }
+    }
+
+    const nx = e.x + moveX;
+    const ny = e.y + moveY;
+
+    const testEnemyX = { x: nx, y: e.y, size: e.size };
+    const testEnemyY = { x: e.x, y: ny, size: e.size };
+
+    if (!enemyHitsBuilding(testEnemyX)) {
+      e.x = nx;
+    }
+    if (!enemyHitsBuilding(testEnemyY)) {
+      e.y = ny;
+    }
+
+    if (rectHit(e.x, e.y, e.size, e.size, player.x, player.y, player.size, player.size)) {
+      if (player.invincible <= 0) {
+        player.hp--;
+        player.invincible = 60;
+        if (player.hp <= 0) {
+          player.hp = 0;
+          gameOver = true;
+        }
+      }
+    }
+
+    for (let j = bullets.length - 1; j >= 0; j--) {
+      const b = bullets[j];
+      if (rectHit(b.x, b.y, b.size, b.size, e.x, e.y, e.size, e.size)) {
+        e.hp--;
+        bullets.splice(j, 1);
+
+        if (e.hp <= 0) {
+          enemies.splice(i, 1);
+          score += 10;
+        }
+        break;
+      }
+    }
+  }
+}
+
 function update() {
   if (gameOver) return;
 
-  // プレイヤー移動
-  let newX = player.x;
-  let newY = player.y;
+  frameCount++;
 
-  if (keys["ArrowUp"]) newY -= player.speed;
-  if (keys["ArrowDown"]) newY += player.speed;
-  if (keys["ArrowLeft"]) newX -= player.speed;
-  if (keys["ArrowRight"]) newX += player.speed;
+  updatePlayer();
+  updateBullets();
+  updateEnemies();
 
-  // 建物に当たらないようにする
-  let temp = { x: newX, y: newY, size: player.size };
-  let blocked = buildings.some(b => hitRect(temp, b));
+  if (frameCount % 20 === 0) {
+    shootAuto();
+  }
+
+  if (frameCount % 55 === 0) {
+    spawnEnemy();
+  }
+}
+
+function drawBuildings() {
+  ctx.fillStyle = "gray";
+  for (const b of buildings) {
+    ctx.fillRect(b.x, b.y, b.w, b.h);
+  }
+}
+
+function drawPlayer() {
+  if (player.invincible > 0 && Math.floor(player.invincible / 5) % 2 === 0) {
+    ctx.fillStyle = "#66ffff";
+  } else {
+    ctx.fillStyle = "cyan";
+  }
+
+  ctx.fillRect(player.x, player.y, player.size, player.size);
+}
+
+function drawBullets() {
+  ctx.fillStyle = "white";
+  for (const b of bullets) {
+    ctx.fillRect(b.x, b.y, b.size, b.size);
+  }
+}
+
+function drawEnemies() {
+  for (const e of enemies) {
+    ctx.fillStyle = e.color;
+    ctx.fillRect(e.x, e.y, e.size, e.size);
+  }
+}
+
+function drawUI() {
+  ctx.fillStyle = "white";
+  ctx.font = "20px Arial";
+  ctx.fillText("SCORE: " + score, 20, 35);
+  ctx.fillText("HP: " + player.hp, 20, 65);
+
+  ctx.font = "14px Arial";
+  ctx.fillText("赤=迫る  橙=逃げる  紫=隠れる", 20, 90);
+  ctx.fillText("指で移動 / 自動で射撃", 20, 110);
+
+  if (gameOver) {
+    ctx.fillStyle = "rgba(0,0,0,0.55)";
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+    ctx.fillStyle = "white";
+    ctx.font = "46px Arial";
+    ctx.fillText("GAME OVER", canvas.width / 2 - 150, canvas.height / 2);
+
+    ctx.font = "22px Arial";
+    ctx.fillText("画面タップで再開", canvas.width / 2 - 85, canvas.height / 2 + 40);
+  }
+}
+
+function draw() {
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  drawBuildings();
+  drawPlayer();
+  drawBullets();
+  drawEnemies();
+  drawUI();
+}
+
+function loop() {
+  update();
+  draw();
+  requestAnimationFrame(loop);
+}
+
+resetGame();
+loop();
+</script>
+</body>
+</html>
