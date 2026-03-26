@@ -8,12 +8,12 @@
   body {
     margin: 0;
     overflow: hidden;
-    background: black;
+    background: #05070b;
     touch-action: none;
   }
   canvas {
     display: block;
-    background: black;
+    background: #05070b;
   }
 </style>
 </head>
@@ -39,11 +39,12 @@ let bullets = [];
 let enemies = [];
 let buildings = [];
 let frameCount = 0;
+let effects = [];
 
 const player = {
   x: canvas.width / 2,
   y: canvas.height / 2,
-  size: 24,
+  size: 26,
   speed: 3.2,
   hp: 5,
   invincible: 120,
@@ -103,6 +104,10 @@ function randomEdgePosition() {
   return { x: -30, y: Math.random() * canvas.height };
 }
 
+function addEffect(x, y, color, size, life) {
+  effects.push({ x, y, color, size, life, maxLife: life });
+}
+
 function createBuildings() {
   let tries = 0;
 
@@ -151,7 +156,7 @@ function spawnEnemy() {
     moveTimer: 0,
     dirX: 0,
     dirY: 0,
-    color: type === "chase" ? "red" : type === "run" ? "orange" : "purple"
+    color: type === "chase" ? "#ff3b3b" : type === "run" ? "#ffae00" : "#b000ff"
   });
 }
 
@@ -178,6 +183,8 @@ function shootAuto() {
     dy: dir.y * 7,
     size: 6
   });
+
+  addEffect(player.x + player.size / 2, player.y + player.size / 2, "#88eeff", 14, 8);
 }
 
 function triggerCrush() {
@@ -191,6 +198,8 @@ function triggerCrush() {
   const px = player.x + player.size / 2;
   const py = player.y + player.size / 2;
 
+  addEffect(px, py, "rgba(255,120,80,0.65)", 70, 16);
+
   for (let i = enemies.length - 1; i >= 0; i--) {
     const e = enemies[i];
     const ex = e.x + e.size / 2;
@@ -198,6 +207,7 @@ function triggerCrush() {
     const d = distance(px, py, ex, ey);
 
     if (d < crushRadius) {
+      addEffect(ex, ey, e.color, 20, 10);
       enemies.splice(i, 1);
       score += 15;
     }
@@ -212,6 +222,7 @@ function resetGame() {
   bullets = [];
   enemies = [];
   buildings = [];
+  effects = [];
   frameCount = 0;
 
   player.x = canvas.width / 2;
@@ -283,17 +294,9 @@ function updatePlayer() {
   player.x = Math.max(0, Math.min(canvas.width - player.size, player.x));
   player.y = Math.max(0, Math.min(canvas.height - player.size, player.y));
 
-  if (player.invincible > 0) {
-    player.invincible--;
-  }
-
-  if (player.crushTimer > 0) {
-    player.crushTimer--;
-  }
-
-  if (player.crushCooldown > 0) {
-    player.crushCooldown--;
-  }
+  if (player.invincible > 0) player.invincible--;
+  if (player.crushTimer > 0) player.crushTimer--;
+  if (player.crushCooldown > 0) player.crushCooldown--;
 }
 
 function updateBullets() {
@@ -378,17 +381,14 @@ function updateEnemies() {
     const nx = e.x + moveX;
     const ny = e.y + moveY;
 
-    if (!enemyHitsBuildingRect(nx, e.y, e.size)) {
-      e.x = nx;
-    }
-    if (!enemyHitsBuildingRect(e.x, ny, e.size)) {
-      e.y = ny;
-    }
+    if (!enemyHitsBuildingRect(nx, e.y, e.size)) e.x = nx;
+    if (!enemyHitsBuildingRect(e.x, ny, e.size)) e.y = ny;
 
     if (rectHit(e.x, e.y, e.size, e.size, player.x, player.y, player.size, player.size)) {
       if (player.invincible <= 0) {
         player.hp--;
         player.invincible = 60;
+        addEffect(player.x + player.size / 2, player.y + player.size / 2, "#ffffff", 18, 10);
 
         if (player.hp <= 0) {
           player.hp = 0;
@@ -402,6 +402,7 @@ function updateEnemies() {
       if (rectHit(b.x, b.y, b.size, b.size, e.x, e.y, e.size, e.size)) {
         e.hp--;
         bullets.splice(j, 1);
+        addEffect(e.x + e.size / 2, e.y + e.size / 2, e.color, 12, 8);
 
         if (e.hp <= 0) {
           enemies.splice(i, 1);
@@ -413,98 +414,184 @@ function updateEnemies() {
   }
 }
 
+function updateEffects() {
+  for (let i = effects.length - 1; i >= 0; i--) {
+    effects[i].life--;
+    if (effects[i].life <= 0) {
+      effects.splice(i, 1);
+    }
+  }
+}
+
 function update() {
-  if (gameOver) return;
+  if (!gameOver) {
+    frameCount++;
+    updatePlayer();
+    updateBullets();
+    updateEnemies();
+    updateEffects();
 
-  frameCount++;
+    if (frameCount % 20 === 0) shootAuto();
+    if (frameCount % 55 === 0) spawnEnemy();
+  } else {
+    updateEffects();
+  }
+}
 
-  updatePlayer();
-  updateBullets();
-  updateEnemies();
+function drawBackground() {
+  ctx.fillStyle = "#05070b";
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-  if (frameCount % 20 === 0) {
-    shootAuto();
+  ctx.strokeStyle = "rgba(255,255,255,0.04)";
+  ctx.lineWidth = 1;
+
+  for (let x = 0; x < canvas.width; x += 40) {
+    ctx.beginPath();
+    ctx.moveTo(x, 0);
+    ctx.lineTo(x, canvas.height);
+    ctx.stroke();
   }
 
-  if (frameCount % 55 === 0) {
-    spawnEnemy();
+  for (let y = 0; y < canvas.height; y += 40) {
+    ctx.beginPath();
+    ctx.moveTo(0, y);
+    ctx.lineTo(canvas.width, y);
+    ctx.stroke();
   }
 }
 
 function drawBuildings() {
-  ctx.fillStyle = "gray";
   for (const b of buildings) {
+    ctx.fillStyle = "#7d7d7d";
     ctx.fillRect(b.x, b.y, b.w, b.h);
+
+    ctx.fillStyle = "#5e5e5e";
+    ctx.fillRect(b.x + 6, b.y + 6, b.w - 12, b.h - 12);
+
+    ctx.fillStyle = "#9a9a9a";
+    for (let wx = b.x + 12; wx < b.x + b.w - 10; wx += 18) {
+      for (let wy = b.y + 12; wy < b.y + b.h - 10; wy += 18) {
+        ctx.fillRect(wx, wy, 6, 8);
+      }
+    }
   }
 }
 
 function drawPlayer() {
   if (player.crushTimer > 0) {
     ctx.beginPath();
-    ctx.arc(
-      player.x + player.size / 2,
-      player.y + player.size / 2,
-      70,
-      0,
-      Math.PI * 2
-    );
-    ctx.fillStyle = "rgba(255, 120, 80, 0.25)";
+    ctx.arc(player.x + player.size / 2, player.y + player.size / 2, 70, 0, Math.PI * 2);
+    ctx.fillStyle = "rgba(255,120,80,0.18)";
     ctx.fill();
+    ctx.strokeStyle = "rgba(255,180,120,0.7)";
+    ctx.lineWidth = 3;
+    ctx.stroke();
   }
 
   if (player.invincible > 0 && Math.floor(player.invincible / 5) % 2 === 0) {
-    ctx.fillStyle = "#66ffff";
+    ctx.fillStyle = "#77ffff";
   } else {
-    ctx.fillStyle = "cyan";
+    ctx.fillStyle = "#20e0e8";
   }
 
-  ctx.fillRect(player.x, player.y, player.size, player.size);
+  ctx.fillRect(player.x + 4, player.y, player.size - 8, player.size);
+  ctx.fillStyle = "#0ab4c0";
+  ctx.fillRect(player.x, player.y + 5, player.size, player.size - 10);
+
+  ctx.fillStyle = "#bdfcff";
+  ctx.fillRect(player.x + 8, player.y + 6, 4, 4);
+  ctx.fillRect(player.x + player.size - 12, player.y + 6, 4, 4);
+
+  ctx.fillStyle = "#dffcff";
+  ctx.fillRect(player.x + player.size - 2, player.y + 10, 6, 4);
 }
 
 function drawBullets() {
-  ctx.fillStyle = "white";
   for (const b of bullets) {
+    ctx.fillStyle = "#ffffff";
     ctx.fillRect(b.x, b.y, b.size, b.size);
+
+    ctx.fillStyle = "rgba(150,255,255,0.35)";
+    ctx.fillRect(b.x - 2, b.y - 2, b.size + 4, b.size + 4);
+  }
+}
+
+function drawEnemyBody(e) {
+  ctx.fillStyle = e.color;
+  ctx.fillRect(e.x + 3, e.y, e.size - 6, e.size);
+
+  if (e.type === "chase") {
+    ctx.fillRect(e.x, e.y + 5, e.size, e.size - 10);
+    ctx.fillStyle = "#ffd2d2";
+    ctx.fillRect(e.x + 6, e.y + 6, 3, 3);
+    ctx.fillRect(e.x + e.size - 9, e.y + 6, 3, 3);
+  }
+
+  if (e.type === "run") {
+    ctx.fillRect(e.x + 2, e.y + 4, e.size - 4, e.size - 8);
+    ctx.fillStyle = "#fff0c2";
+    ctx.fillRect(e.x + 5, e.y + 5, 3, 3);
+    ctx.fillRect(e.x + e.size - 8, e.y + 5, 3, 3);
+  }
+
+  if (e.type === "hide") {
+    ctx.fillRect(e.x + 1, e.y + 3, e.size - 2, e.size - 6);
+    ctx.fillStyle = "#f2c8ff";
+    ctx.fillRect(e.x + 5, e.y + 7, 3, 3);
+    ctx.fillRect(e.x + e.size - 8, e.y + 7, 3, 3);
   }
 }
 
 function drawEnemies() {
   for (const e of enemies) {
-    ctx.fillStyle = e.color;
-    ctx.fillRect(e.x, e.y, e.size, e.size);
+    drawEnemyBody(e);
+  }
+}
+
+function drawEffects() {
+  for (const ef of effects) {
+    const alpha = ef.life / ef.maxLife;
+    ctx.beginPath();
+    ctx.arc(ef.x, ef.y, ef.size * (1 + (1 - alpha) * 0.4), 0, Math.PI * 2);
+    ctx.fillStyle = ef.color.replace("0.65", alpha.toFixed(2));
+    ctx.globalAlpha = alpha;
+    ctx.fill();
+    ctx.globalAlpha = 1;
   }
 }
 
 function drawUI() {
   ctx.fillStyle = "white";
-  ctx.font = "20px Arial";
+  ctx.font = "bold 20px Arial";
   ctx.fillText("SCORE: " + score, 20, 35);
   ctx.fillText("HP: " + player.hp, 20, 65);
 
   ctx.font = "14px Arial";
+  ctx.fillStyle = "#d7d7d7";
   ctx.fillText("赤=迫る  橙=逃げる  紫=隠れる", 20, 90);
   ctx.fillText("指で移動 / 自動で射撃", 20, 110);
   ctx.fillText("2本指タップ=踏み潰し", 20, 130);
 
   if (gameOver) {
-    ctx.fillStyle = "rgba(0,0,0,0.55)";
+    ctx.fillStyle = "rgba(0,0,0,0.58)";
     ctx.fillRect(0, 0, canvas.width, canvas.height);
 
     ctx.fillStyle = "white";
-    ctx.font = "46px Arial";
-    ctx.fillText("GAME OVER", canvas.width / 2 - 150, canvas.height / 2);
+    ctx.font = "bold 42px Arial";
+    ctx.fillText("GAME OVER", canvas.width / 2 - 130, canvas.height / 2);
 
-    ctx.font = "22px Arial";
-    ctx.fillText("画面タップで再開", canvas.width / 2 - 85, canvas.height / 2 + 40);
+    ctx.font = "20px Arial";
+    ctx.fillText("画面タップで再開", canvas.width / 2 - 75, canvas.height / 2 + 38);
   }
 }
 
 function draw() {
-  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  drawBackground();
   drawBuildings();
   drawPlayer();
   drawBullets();
   drawEnemies();
+  drawEffects();
   drawUI();
 }
 
